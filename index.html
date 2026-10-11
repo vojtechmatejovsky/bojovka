@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Bojovka Běly a Viky</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700&display=swap">
+<style>
+/* Layout: one-screen phone app. Pine header on top, map fills the middle, white task sheet docked at the bottom. */
+:root {
+  --bg: #eef2ee;
+  --fg: #16261e;
+  --muted: #566a5e;
+  --line: #d3ddd5;
+  --sheet: #ffffff;
+  --pine: #1f4d3a;
+  --pine-2: #2c6a50;
+  --on-pine: #f2f8f4;
+  --sun: #ffc233;
+  --on-sun: #2b2000;
+  --ok: #2e8b57;
+  --on-ok: #ffffff;
+  --ok-bg: #e0f3e7;
+  --bad: #c0392b;
+  --bad-bg: #fbe4e0;
+  --me: #2a6df4;
+  --mapbg: #cfe2c8;
+  --grid: rgba(31, 77, 58, 0.09);
+  --tile-filter: none;
+  --shadow: 0 -6px 24px rgba(10, 30, 20, 0.18);
+  --f-display: 'Fredoka', system-ui, sans-serif;
+  --f-body: 'Nunito', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1913;
+    --fg: #e6efe9;
+    --muted: #9db2a5;
+    --line: #2b3f33;
+    --sheet: #16261d;
+    --pine: #123324;
+    --pine-2: #1d4a37;
+    --on-pine: #e9f3ed;
+    --ok: #4cc582;
+    --on-ok: #06210f;
+    --ok-bg: #173a28;
+    --bad: #ff7b6b;
+    --bad-bg: #40201b;
+    --me: #6aa0ff;
+    --mapbg: #1b2a21;
+    --grid: rgba(230, 239, 233, 0.06);
+    --tile-filter: brightness(0.78) contrast(1.05);
+    --shadow: 0 -6px 24px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1913;
+  --fg: #e6efe9;
+  --muted: #9db2a5;
+  --line: #2b3f33;
+  --sheet: #16261d;
+  --pine: #123324;
+  --pine-2: #1d4a37;
+  --on-pine: #e9f3ed;
+  --ok: #4cc582;
+  --on-ok: #06210f;
+  --ok-bg: #173a28;
+  --bad: #ff7b6b;
+  --bad-bg: #40201b;
+  --me: #6aa0ff;
+  --mapbg: #1b2a21;
+  --grid: rgba(230, 239, 233, 0.06);
+  --tile-filter: brightness(0.78) contrast(1.05);
+  --shadow: 0 -6px 24px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 1rem/1.45 var(--f-body);
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--me); outline-offset: 2px; }
+
+#app { height: 100%; display: flex; flex-direction: column; }
+
+.top {
+  background: var(--pine);
+  color: var(--on-pine);
+  padding: 0.7rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.top h1 { margin: 0; font: 600 1.125rem/1.2 var(--f-display); text-wrap: balance; }
+.pill {
+  background: var(--pine-2);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font: 600 0.875rem var(--f-display);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+#map {
+  position: relative;
+  flex: 1;
+  min-height: 12rem;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  background-color: var(--mapbg);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+#tiles, #markers, #route { position: absolute; inset: 0; pointer-events: none; }
+.tile {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 256px;
+  height: 256px;
+  max-width: none;
+  filter: var(--tile-filter);
+}
+#routeLine {
+  stroke: var(--pine);
+  stroke-width: 4;
+  stroke-dasharray: 2 10;
+  stroke-linecap: round;
+  fill: none;
+}
+:root[data-theme="dark"] #routeLine { stroke: var(--sun); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #routeLine { stroke: var(--sun); } }
+
+#markers > * { position: absolute; left: 0; top: 0; }
+.pin {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--sun);
+  color: var(--on-sun);
+  border: 3px solid var(--sheet);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  display: grid;
+  place-items: center;
+  font: 700 1.125rem var(--f-display);
+}
+.pin.done { background: var(--ok); color: var(--on-ok); }
+.pin.now::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 3px solid var(--sun);
+  animation: ring 1.8s ease-out infinite;
+}
+.me {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--me);
+  border: 3px solid #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+.me::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid var(--me);
+  animation: ring 2.2s ease-out infinite;
+}
+@keyframes ring {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(2.4); opacity: 0; }
+}
+
+.chip {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  max-width: calc(100% - 5rem);
+  background: var(--sheet);
+  color: var(--fg);
+  border-radius: 0.75rem;
+  padding: 0.4rem 0.7rem;
+  font: 600 0.8125rem/1.3 var(--f-body);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.ctrls {
+  position: absolute;
+  right: 0.75rem;
+  top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.mapbtn {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  border: 0;
+  background: var(--sheet);
+  color: var(--fg);
+  font: 600 1.25rem var(--f-display);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.mapbtn.wide { font-size: 0.875rem; }
+.attr {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.6875rem;
+  background: var(--sheet);
+  color: var(--muted);
+  border-top-right-radius: 0.4rem;
+}
+
+.sheet {
+  background: var(--sheet);
+  box-shadow: var(--shadow);
+  border-radius: 1.25rem 1.25rem 0 0;
+  padding: 1.1rem 1rem 0.5rem;
+  max-height: 60%;
+  overflow-y: auto;
+  position: relative;
+}
+.eyebrow {
+  margin: 0 0 0.25rem;
+  font: 700 0.75rem/1.2 var(--f-body);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sheet h2 { margin: 0 0 0.4rem; font: 600 1.5rem/1.2 var(--f-display); text-wrap: balance; }
+.sheet p { margin: 0 0 0.9rem; max-width: 65ch; }
+.sheet p.sub { color: var(--muted); font-size: 0.9375rem; }
+.tag {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--sun);
+  color: var(--on-sun);
+  font: 700 0.75rem var(--f-body);
+}
+
+.dist { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.5rem 0.6rem; margin: 0.25rem 0 0.6rem; }
+.dist .num { font: 600 3rem/1 var(--f-display); font-variant-numeric: tabular-nums; }
+.dist .unit { font: 600 1.25rem var(--f-display); color: var(--muted); }
+.dist .dir {
+  margin-left: auto;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 2px solid var(--line);
+  font: 700 0.875rem var(--f-body);
+}
+
+.btn {
+  display: block;
+  width: 100%;
+  min-height: 3.25rem;
+  padding: 0.7rem 1.25rem;
+  border-radius: 0.9rem;
+  border: 0;
+  background: var(--sun);
+  color: var(--on-sun);
+  font: 600 1.125rem var(--f-display);
+}
+.btn:disabled { opacity: 0.6; cursor: default; }
+.btn.alt { background: transparent; color: var(--fg); border: 2px solid var(--line); margin-top: 0.5rem; }
+
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem; }
+.opt {
+  min-height: 4.75rem;
+  border-radius: 1rem;
+  border: 3px solid var(--line);
+  background: var(--bg);
+  font: 600 2.25rem var(--f-display);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+.opt:active { border-color: var(--sun); }
+.opt.txt { font-size: 1.3rem; line-height: 1.15; padding: 0.5rem; overflow-wrap: anywhere; }
+.opt.bad { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); animation: shake 0.35s; }
+.opt:disabled { cursor: default; }
+@keyframes shake {
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+.msg { min-height: 1.5rem; margin: 0 0 0.5rem !important; font-weight: 700; color: var(--bad); }
+
+.win { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 0.9rem; }
+.win .big {
+  flex: none;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 50%;
+  background: var(--ok);
+  color: var(--on-ok);
+  display: grid;
+  place-items: center;
+}
+.win p { margin: 0; font: 600 1.25rem/1.25 var(--f-display); }
+
+.foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--line);
+}
+.link {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: 600 0.8125rem var(--f-body);
+  text-decoration: underline;
+  padding: 0.5rem 0.25rem;
+  min-height: 2.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pin.now::after, .me::after, .opt.bad { animation: none; }
+}
+</style>
+<style>
+html{padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+body{margin:0}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="top">
+    <h1>Bojovka Běly a Viky</h1>
+    <span id="progress" class="pill"></span>
+  </header>
+
+  <div id="map" aria-label="Mapa">
+    <div id="tiles"></div>
+    <svg id="route" aria-hidden="true"><line id="routeLine" x1="0" y1="0" x2="0" y2="0"></line></svg>
+    <div id="markers"></div>
+    <div id="testchip" class="chip" hidden>Test bez GPS: klepnutím na mapu se přesunete</div>
+    <div class="ctrls">
+      <button class="mapbtn" data-act="zoomin" aria-label="Přiblížit">+</button>
+      <button class="mapbtn" data-act="zoomout" aria-label="Oddálit">&minus;</button>
+      <button class="mapbtn wide" data-act="fit" aria-label="Ukázat celou trasu">Vše</button>
+    </div>
+    <span id="attr" class="attr" hidden>&copy; OpenStreetMap</span>
+  </div>
+
+  <section id="sheet" class="sheet" aria-live="polite">
+    <div id="sheetBody"></div>
+    <div class="foot">
+      <button class="link" id="testBtn" data-act="test">Test bez GPS</button>
+      <button class="link" id="resetBtn" data-act="reset">Začít znovu</button>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---- Stanoviště. Tady se upravují místa a úkoly. ----
+  // lat/lon: souřadnice, radius: do kolika metrů se odemkne úkol,
+  // question: text otázky pro papírek na místě, v appce se nezobrazuje.
+  // options: možnosti odpovědi v appce, answer: pořadí správné odpovědi (od 0).
+  var STATIONS = [
+    {
+      name: 'Start u auta',
+      lat: 50.0460586, lon: 14.5925342, radius: 40,
+      before: 'Dojeďte na značku na mapě a zaparkujte. Po vystoupení se objeví první úkol.',
+      question: 'Kolik je Běle let?',
+      options: ['3', '4', '5'], answer: 1,
+      ok: 'Správně, Běle jsou čtyři roky.'
+    },
+    {
+      name: 'Druhé stanoviště',
+      lat: 50.0444747, lon: 14.5971011, radius: 40,
+      question: 'Kolik je 8 + 8?',
+      options: ['16', '14', '88'], answer: 0,
+      ok: 'Správně, osm a osm je šestnáct.'
+    },
+    {
+      name: 'Třetí stanoviště',
+      lat: 50.041033, lon: 14.599667, radius: 40,
+      question: 'Kde bydlí dědeček Milan?',
+      options: ['Praha', 'Brno', 'Plzeň'], answer: 2,
+      ok: 'Správně, dědeček Milan bydlí v Plzni.'
+    },
+    {
+      name: 'Čtvrté stanoviště',
+      lat: 50.044950, lon: 14.602467, radius: 40,
+      question: 'Čím jezdíme?',
+      options: ['VW', 'Škoda', 'Tesla'], answer: 0,
+      ok: 'Správně, jezdíme VW.'
+    },
+    {
+      name: 'Páté stanoviště',
+      lat: 50.047286, lon: 14.601035, radius: 40,
+      question: 'Jak se řekne anglicky ahoj?',
+      options: ['Yes', 'Orange', 'Hello'], answer: 2,
+      ok: 'Správně, ahoj se anglicky řekne hello.'
+    },
+    {
+      name: 'Šesté stanoviště',
+      lat: 50.048530, lon: 14.596769, radius: 40,
+      question: 'Doplň: „Prdni si a …“',
+      options: ['Omluv se', 'Zasměj se', 'Zmiz'], answer: 2,
+      ok: 'Správně: prdni si a zmiz!'
+    },
+    {
+      name: 'Sedmé stanoviště',
+      lat: 50.048224, lon: 14.592990, radius: 40,
+      question: 'Kdo je víla?',
+      options: ['Viky', 'Vivi', 'Běla'], answer: 1,
+      ok: 'Správně, víla je Vivi.'
+    }
+  ];
+
+  var KEY = 'bojovka-beli-viky-v1';
+  var TILE = 256, ZMIN = 12, ZMAX = 18;
+  var DIRS = ['sever', 'severovýchod', 'východ', 'jihovýchod', 'jih', 'jihozápad', 'západ', 'severozápad'];
+  var CHECK = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+
+  function $(id) { return document.getElementById(id); }
+  var map = $('map'), tilesEl = $('tiles'), markersEl = $('markers'), route = $('route'), line = $('routeLine');
+  var body = $('sheetBody'), chip = $('testchip'), attr = $('attr');
+
+  var Z = 17;
+  var view = { lat: STATIONS[0].lat, lon: STATIONS[0].lon };
+  var me = null, testMode = false, gpsState = 'idle', gpsMsg = '', watchId = null;
+  var markerRefs = [], meRef = null, fitted = false, resetTimer = null;
+  var tileEls = new Map();
+  var state = loadState();
+
+  // ---- Uložený postup ----
+  function loadState() {
+    var s = { i: 0, arrived: false, answered: false, finished: false };
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) {
+        var p = JSON.parse(raw);
+        if (p && typeof p.i === 'number' && p.i >= 0 && p.i < STATIONS.length) {
+          s = { i: p.i, arrived: !!p.arrived, answered: !!p.answered, finished: !!p.finished };
+        }
+      }
+    } catch (e) {}
+    return s;
+  }
+  function saveState() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  // ---- Zeměpis ----
+  function dist(a, b) {
+    var R = 6371000, r = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r;
+    var h = Math.pow(Math.sin(dLat / 2), 2) + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.pow(Math.sin(dLon / 2), 2);
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function bearing(a, b) {
+    var r = Math.PI / 180, dl = (b.lon - a.lon) * r;
+    var y = Math.sin(dl) * Math.cos(b.lat * r);
+    var x = Math.cos(a.lat * r) * Math.sin(b.lat * r) - Math.sin(a.lat * r) * Math.cos(b.lat * r) * Math.cos(dl);
+    return (Math.atan2(y, x) / r + 360) % 360;
+  }
+  function dirName(deg) { return DIRS[Math.round(deg / 45) % 8]; }
+  function fmtDist(m) {
+    if (m >= 1000) return { n: (m / 1000).toFixed(1).replace('.', ','), u: 'km' };
+    return { n: String(Math.round(m)), u: 'm' };
+  }
+
+  // ---- Mapa (dlaždice OpenStreetMap, vlastní jednoduchý posun a zoom) ----
+  function proj(lat, lon, z) {
+    var s = TILE * Math.pow(2, z);
+    var sin = Math.sin(lat * Math.PI / 180);
+    return { x: (lon + 180) / 360 * s, y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * s };
+  }
+  function unproj(x, y, z) {
+    var s = TILE * Math.pow(2, z);
+    var n = Math.PI - 2 * Math.PI * y / s;
+    return { lat: 180 / Math.PI * Math.atan(Math.sinh(n)), lon: x / s * 360 - 180 };
+  }
+
+  function drawTiles(left, top, W, H) {
+    var n = Math.pow(2, Z), need = new Set();
+    var tx0 = Math.floor(left / TILE), tx1 = Math.floor((left + W) / TILE);
+    var ty0 = Math.floor(top / TILE), ty1 = Math.floor((top + H) / TILE);
+    for (var tx = tx0; tx <= tx1; tx++) {
+      for (var ty = ty0; ty <= ty1; ty++) {
+        if (ty < 0 || ty >= n) continue;
+        var wx = ((tx % n) + n) % n;
+        var key = Z + '/' + wx + '/' + ty + '/' + tx;
+        need.add(key);
+        var el = tileEls.get(key);
+        if (!el) {
+          el = new Image();
+          el.className = 'tile';
+          el.alt = '';
+          el.draggable = false;
+          el.onload = function () { attr.hidden = false; };
+          el.onerror = function () { this.style.display = 'none'; };
+          el.src = 'https://tile.openstreetmap.org/' + Z + '/' + wx + '/' + ty + '.png';
+          tilesEl.appendChild(el);
+          tileEls.set(key, el);
+        }
+        el.style.transform = 'translate(' + (tx * TILE - left) + 'px,' + (ty * TILE - top) + 'px)';
+      }
+    }
+    tileEls.forEach(function (el, k) {
+      if (!need.has(k)) { el.remove(); tileEls.delete(k); }
+    });
+  }
+
+  function render() {
+    var W = map.clientWidth, H = map.clientHeight;
+    if (!W || !H) return;
+    var c = proj(view.lat, view.lon, Z);
+    var left = c.x - W / 2, top = c.y - H / 2;
+    drawTiles(left, top, W, H);
+    markerRefs.forEach(function (m) {
+      var p = proj(m.lat, m.lon, Z);
+      m.el.style.transform = 'translate(' + (p.x - left) + 'px,' + (p.y - top) + 'px) translate(-50%,-50%)';
+    });
+    route.setAttribute('width', W);
+    route.setAttribute('height', H);
+    if (me && !state.arrived && !state.finished) {
+      var s = STATIONS[state.i];
+      var a = proj(me.lat, me.lon, Z), b = proj(s.lat, s.lon, Z);
+      line.setAttribute('x1', a.x - left);
+      line.setAttribute('y1', a.y - top);
+      line.setAttribute('x2', b.x - left);
+      line.setAttribute('y2', b.y - top);
+      line.style.display = '';
+    } else {
+      line.style.display = 'none';
+    }
+  }
+
+  function fit(pts) {
+    var W = map.clientWidth, H = map.clientHeight;
+    if (!W || !H) return false;
+    if (pts.length === 1) {
+      view = { lat: pts[0].lat, lon: pts[0].lon };
+      Z = 17;
+      render();
+      return true;
+    }
+    var z, xs, ys;
+    for (z = ZMAX; z > ZMIN; z--) {
+      var ps = pts.map(function (p) { return proj(p.lat, p.lon, z); });
+      xs = ps.map(function (p) { return p.x; });
+      ys = ps.map(function (p) { return p.y; });
+      if (Math.max.apply(null, xs) - Math.min.apply(null, xs) <= W - 130 &&
+          Math.max.apply(null, ys) - Math.min.apply(null, ys) <= H - 130) break;
+    }
+    var q = pts.map(function (p) { return proj(p.lat, p.lon, z); });
+    var qx = q.map(function (p) { return p.x; }), qy = q.map(function (p) { return p.y; });
+    var cx = (Math.min.apply(null, qx) + Math.max.apply(null, qx)) / 2;
+    var cy = (Math.min.apply(null, qy) + Math.max.apply(null, qy)) / 2;
+    Z = z;
+    view = unproj(cx, cy, z);
+    render();
+    return true;
+  }
+
+  function fitDefault() {
+    if (state.finished) return fit(STATIONS.map(function (s) { return { lat: s.lat, lon: s.lon }; }));
+    var s = STATIONS[state.i];
+    var pts = [{ lat: s.lat, lon: s.lon }];
+    if (me) pts.push({ lat: me.lat, lon: me.lon });
+    return fit(pts);
+  }
+
+  function zoomBy(d) {
+    var nz = Math.max(ZMIN, Math.min(ZMAX, Z + d));
+    if (nz !== Z) { Z = nz; render(); }
+  }
+
+  // ---- Značky ----
+  function addMe() {
+    var el = document.createElement('div');
+    el.className = 'me';
+    markersEl.appendChild(el);
+    meRef = { el: el, lat: me.lat, lon: me.lon };
+    markerRefs.push(meRef);
+  }
+  function buildMarkers() {
+    markersEl.textContent = '';
+    markerRefs = [];
+    meRef = null;
+    var last = state.finished ? STATIONS.length - 1 : state.i;
+    STATIONS.forEach(function (s, i) {
+      if (i > last) return;
+      var solved = i < state.i || state.finished || (i === state.i && state.answered);
+      var el = document.createElement('div');
+      el.className = 'pin' + (solved ? ' done' : (i === state.i ? ' now' : ''));
+      el.innerHTML = solved ? CHECK : String(i + 1);
+      markersEl.appendChild(el);
+      markerRefs.push({ el: el, lat: s.lat, lon: s.lon });
+    });
+    if (me) addMe();
+  }
+
+  // ---- Polohu ----
+  function setPosition(lat, lon, acc, src) {
+    var first = !me;
+    me = { lat: lat, lon: lon, acc: acc, src: src };
+    if (!meRef) addMe(); else { meRef.lat = lat; meRef.lon = lon; }
+    var justArrived = false;
+    if (!state.finished && !state.arrived && dist(me, STATIONS[state.i]) <= STATIONS[state.i].radius) {
+      state.arrived = true;
+      saveState();
+      justArrived = true;
+    }
+    if (first || justArrived) fitDefault(); else render();
+    if (!state.arrived || justArrived) renderSheet();
+  }
+
+  function gpsFail(msg) {
+    if (watchId !== null) { try { navigator.geolocation.clearWatch(watchId); } catch (e) {} watchId = null; }
+    gpsState = 'off';
+    gpsMsg = msg;
+    testMode = true;
+    renderAll();
+  }
+
+  function startGPS() {
+    if (!('geolocation' in navigator)) { gpsFail('Tenhle prohlížeč GPS nepodporuje.'); return; }
+    testMode = false;
+    gpsState = 'asking';
+    gpsMsg = '';
+    renderAll();
+    try {
+      watchId = navigator.geolocation.watchPosition(
+        function (pos) {
+          gpsState = 'on';
+          if (testMode) return;
+          chip.hidden = true;
+          setPosition(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, 'gps');
+        },
+        function (err) {
+          gpsFail(err && err.code === 1
+            ? 'Poloha není povolená. Povolte ji v nastavení prohlížeče, nebo zkuste test bez GPS.'
+            : 'Polohu se nepodařilo zjistit. Zkuste to venku, nebo test bez GPS.');
+        },
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 30000 }
+      );
+    } catch (e) {
+      gpsFail('Polohu se nepodařilo zapnout.');
+    }
+  }
+
+  function toggleTest() {
+    if (testMode) {
+      testMode = false;
+      if (me && me.src === 'test') { me = null; buildMarkers(); }
+    } else {
+      if (watchId !== null) { try { navigator.geolocation.clearWatch(watchId); } catch (e) {} watchId = null; }
+      gpsState = 'idle';
+      testMode = true;
+    }
+    renderAll();
+  }
+
+  // ---- Panel s úkolem ----
+  function sheetHTML() {
+    var N = STATIONS.length, s = STATIONS[state.i], n = state.i + 1;
+
+    if (state.finished) {
+      return '<div class="win"><span class="big">' + CHECK + '</span><p>Hotovo!</p></div>' +
+        '<p class="sub">Prošli jste všechna stanoviště. Jděte si pro odměnu.</p>' +
+        '<button class="btn" data-act="restart">Hrát od začátku</button>';
+    }
+
+    if (state.arrived && !s.question) {
+      var lastS = state.i === N - 1;
+      return '<p class="eyebrow">Stanoviště ' + n + ' z ' + N + ' · jste na místě</p>' +
+        '<span class="tag">Úkol zatím není vymyšlený</span>' +
+        '<h2>Tady bude úkol</h2>' +
+        '<p class="sub">Až bude hádanka hotová, objeví se tady. Zatím můžete jít dál.</p>' +
+        '<button class="btn" data-act="next">' + (lastS ? 'Dokončit' : 'Ukázat další místo') + '</button>';
+    }
+
+    if (state.arrived && state.answered) {
+      var lastOne = state.i === N - 1;
+      return '<p class="eyebrow">Stanoviště ' + n + ' z ' + N + '</p>' +
+        '<div class="win"><span class="big">' + CHECK + '</span><p>' + s.ok + '</p></div>' +
+        '<button class="btn" data-act="next">' + (lastOne ? 'Dokončit' : 'Ukázat další místo') + '</button>';
+    }
+
+    if (state.arrived) {
+      var opts = s.options.map(function (o, k) {
+        return '<button class="opt' + (o.length > 4 ? ' txt' : '') + '" data-act="answer" data-k="' + k + '">' + o + '</button>';
+      }).join('');
+      return '<p class="eyebrow">Stanoviště ' + n + ' z ' + N + ' · úkol</p>' +
+        (s.sample ? '<span class="tag">Ukázkový úkol, nahradí se vlastním</span>' : '') +
+        '<h2>Najděte papírek číslo ' + n + '</h2>' +
+        '<p class="sub">Přečtěte otázku na papírku a klepněte na správnou odpověď.</p>' +
+        '<div class="opts">' + opts + '</div>' +
+        '<p class="msg" id="msg" role="status"></p>';
+    }
+
+    if (!me) {
+      if (testMode) {
+        return '<p class="eyebrow">Stanoviště ' + n + ' z ' + N + '</p>' +
+          '<h2>Klepněte na mapu</h2>' +
+          '<p class="sub">V testovacím režimu se přesunete tam, kam na mapě klepnete. Žlutá značka je cíl.</p>';
+      }
+      var msgHtml = gpsMsg ? '<p class="sub">' + gpsMsg + '</p>' : '';
+      return '<p class="eyebrow">Stanoviště ' + n + ' z ' + N + '</p>' +
+        '<h2>' + s.name + '</h2>' +
+        '<p>' + (s.before || 'Jděte k žluté značce na mapě. Až budete blíž než ' + s.radius + ' m, objeví se úkol.') + '</p>' +
+        msgHtml +
+        '<button class="btn" data-act="gps"' + (gpsState === 'asking' ? ' disabled' : '') + '>' +
+        (gpsState === 'asking' ? 'Hledám polohu…' : 'Zapnout polohu') + '</button>';
+    }
+
+    var d = dist(me, s), f = fmtDist(d), dir = dirName(bearing(me, s));
+    return '<p class="eyebrow">Stanoviště ' + n + ' z ' + N + '</p>' +
+      '<h2>Jděte k žluté značce</h2>' +
+      '<div class="dist"><span class="num">' + f.n + '</span><span class="unit">' + f.u + '</span><span class="dir">' + dir + '</span></div>' +
+      '<p class="sub">Až budete blíž než ' + s.radius + ' m, objeví se úkol.' +
+      (me.src === 'gps' && me.acc ? ' Přesnost GPS asi ' + Math.round(me.acc) + ' m.' : '') + '</p>';
+  }
+
+  function renderSheet() {
+    body.innerHTML = sheetHTML();
+    $('progress').textContent = state.finished ? 'Hotovo' : (state.i + 1) + ' / ' + STATIONS.length;
+    $('testBtn').textContent = testMode ? 'Vypnout test' : 'Test bez GPS';
+  }
+
+  function renderAll() {
+    chip.hidden = !testMode;
+    buildMarkers();
+    renderSheet();
+    render();
+  }
+
+  // ---- Akce ----
+  function answer(btn) {
+    var s = STATIONS[state.i];
+    var k = Number(btn.getAttribute('data-k'));
+    if (k === s.answer) {
+      state.answered = true;
+      saveState();
+      buildMarkers();
+      renderSheet();
+      render();
+    } else {
+      btn.classList.add('bad');
+      btn.disabled = true;
+      var m = $('msg');
+      if (m) m.textContent = 'To není ono, zkuste to znovu.';
+    }
+  }
+
+  function next() {
+    if (state.i >= STATIONS.length - 1) {
+      state.finished = true;
+    } else {
+      state.i += 1;
+      state.arrived = false;
+      state.answered = false;
+    }
+    saveState();
+    buildMarkers();
+    renderSheet();
+    fitDefault();
+    if (me && !state.finished && dist(me, STATIONS[state.i]) <= STATIONS[state.i].radius) {
+      state.arrived = true;
+      saveState();
+      renderSheet();
+    }
+  }
+
+  function resetGame(confirmed) {
+    var btn = $('resetBtn');
+    if (!confirmed) {
+      btn.textContent = 'Opravdu? Klepněte znovu';
+      clearTimeout(resetTimer);
+      resetTimer = setTimeout(function () { btn.textContent = 'Začít znovu'; }, 4000);
+      btn.setAttribute('data-act', 'reset2');
+      return;
+    }
+    clearTimeout(resetTimer);
+    btn.textContent = 'Začít znovu';
+    btn.setAttribute('data-act', 'reset');
+    state = { i: 0, arrived: false, answered: false, finished: false };
+    saveState();
+    renderAll();
+    fitDefault();
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-act]');
+    if (!t) return;
+    var act = t.getAttribute('data-act');
+    if (act === 'gps') startGPS();
+    else if (act === 'test') toggleTest();
+    else if (act === 'answer') answer(t);
+    else if (act === 'next') next();
+    else if (act === 'reset') resetGame(false);
+    else if (act === 'reset2') resetGame(true);
+    else if (act === 'restart') resetGame(true);
+    else if (act === 'zoomin') zoomBy(1);
+    else if (act === 'zoomout') zoomBy(-1);
+    else if (act === 'fit') fitDefault();
+  });
+
+  // ---- Posun mapy prstem a klepnutí v testovacím režimu ----
+  var drag = null;
+  map.addEventListener('pointerdown', function (e) {
+    if (e.target.closest('.mapbtn')) return;
+    try { map.setPointerCapture(e.pointerId); } catch (err) {}
+    drag = { x: e.clientX, y: e.clientY, moved: 0, c: proj(view.lat, view.lon, Z) };
+  });
+  map.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    drag.moved = Math.max(drag.moved, Math.hypot(dx, dy));
+    if (drag.moved > 6) {
+      view = unproj(drag.c.x - dx, drag.c.y - dy, Z);
+      render();
+    }
+  });
+  map.addEventListener('pointerup', function (e) {
+    if (!drag) return;
+    var d = drag;
+    drag = null;
+    if (d.moved <= 6 && testMode) {
+      var r = map.getBoundingClientRect();
+      var c = proj(view.lat, view.lon, Z);
+      var p = unproj(c.x - r.width / 2 + (e.clientX - r.left), c.y - r.height / 2 + (e.clientY - r.top), Z);
+      setPosition(p.lat, p.lon, 0, 'test');
+    }
+  });
+  map.addEventListener('pointercancel', function () { drag = null; });
+
+  // ---- Start ----
+  renderAll();
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(function () {
+      if (!fitted) { if (map.clientWidth && map.clientHeight) { fitted = fitDefault(); } }
+      else render();
+    }).observe(map);
+  } else {
+    window.addEventListener('load', function () { fitted = fitDefault(); });
+    window.addEventListener('resize', render);
+  }
+})();
+</script>
+</body>
+</html>
